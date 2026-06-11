@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>BeatSync – Real Group Play</title>
+  <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      background: #0a0a14;
+      font-family: 'Inter', system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+    .card {
+      background: rgba(18, 18, 32, 0.9);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 2.5rem;
+      padding: 2rem 1.4rem;
+      width: 100%;
+      max-width: 420px;
+      color: #f0f0f0;
+      box-shadow: 0 30px 50px rgba(0,0,0,0.7);
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.3rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+    }
+    .section { display: none; flex-direction: column; gap: 1rem; }
+    .section.active { display: flex; }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 1.2rem;
+      border: none;
+      font-weight: 600;
+      background: #4f46e5;
+      color: white;
+      box-shadow: 0 8px 20px rgba(79,70,229,0.5);
+      cursor: pointer;
+      transition: 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 1rem;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn.secondary {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: none;
+    }
+    .btn.small {
+      width: auto;
+      padding: 10px 18px;
+      font-size: 0.9rem;
+    }
+    .input-field {
+      width: 100%;
+      padding: 14px;
+      border-radius: 1.2rem;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: white;
+      outline: none;
+      font-size: 0.95rem;
+    }
+    .flex-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .small-text { font-size: 0.8rem; color: #aaa; }
+    .seek-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 6px;
+      background: #4f46e5;
+      outline: none;
+    }
+    .seek-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 0 14px #818cf8;
+    }
+    video {
+      width: 100%;
+      border-radius: 1rem;
+      background: black;
+      max-height: 220px;
+    }
+    .badge {
+      background: rgba(255,255,255,0.1);
+      padding: 6px 14px;
+      border-radius: 2rem;
+      font-size: 0.8rem;
+    }
+    .back-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc;
+      width: auto;
+      align-self: flex-start;
+      margin-bottom: -0.2rem;
+    }
+    .error-text {
+      color: #f87171;
+    }
+    .success-text {
+      color: #4ade80;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>🎧 BeatSync</h1>
+
+  <!-- HOME -->
+  <div id="homeScreen" class="section active">
+    <button class="btn" id="createRoomBtn">✨ Create Room (Host)</button>
+    <div style="text-align:center;color:#9ca3af;">— or —</div>
+    <input type="text" id="joinRoomId" class="input-field" placeholder="Paste Host ID">
+    <button class="btn secondary" id="joinRoomBtn">🔗 Join as Listener</button>
+    <p id="globalStatus" class="small-text" style="text-align:center;"></p>
+  </div>
+
+  <!-- HOST -->
+  <div id="hostScreen" class="section">
+    <button class="btn small secondary back-btn" id="hostBackBtn">◀ Leave Room</button>
+    <div class="flex-row" style="justify-content:space-between;">
+      <span class="badge">🎤 Host</span>
+      <span class="badge" id="listenerCount">0 listeners</span>
+    </div>
+    <div class="flex-row">
+      <input type="text" id="hostIdDisplay" class="input-field" readonly style="flex:1;">
+      <button class="btn small secondary" id="copyIdBtn">📋 Copy</button>
+    </div>
+    <div class="flex-row">
+      <button class="btn secondary" id="uploadBtn" style="flex:1;">📁 Upload File</button>
+      <input type="file" id="fileInput" accept="audio/*,video/*" hidden>
+      <button class="btn secondary" id="urlBtn" style="flex:1;">🌐 Use URL</button>
+    </div>
+    <input type="text" id="urlInput" class="input-field" placeholder="Paste audio/video URL" style="display:none;">
+    <button class="btn secondary" id="loadUrlBtn" style="display:none;">Load & Share URL</button>
+    <p id="hostStatus" class="small-text"></p>
+    <video id="hostVideo" controls style="display:none;" playsinline></video>
+    <div>
+      <div class="flex-row" style="justify-content:space-between;">
+        <span id="hostCurrent">0:00</span>
+        <span id="hostDuration">0:00</span>
+      </div>
+      <input type="range" id="hostSeek" class="seek-slider" min="0" max="100" step="0.1" disabled>
+      <div class="flex-row" style="justify-content:center; gap:25px; margin-top:8px;">
+        <button class="btn" style="width:60px;height:60px;border-radius:50%;" id="hostPlay" disabled>▶️</button>
+        <button class="btn secondary" style="width:60px;height:60px;border-radius:50%;" id="hostPause" disabled>⏸️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LISTENER -->
+  <div id="listenerScreen" class="section">
+    <button class="btn small secondary back-btn" id="listenerBackBtn">◀ Leave Room</button>
+    <span class="badge">🎧 Listener</span>
+    <p id="listenerNowPlaying" class="small-text">Waiting for host...</p>
+    <video id="listenerVideo" controls style="display:none;" playsinline></video>
+    <div class="flex-row" style="justify-content:space-between;">
+      <span id="listenerCurrent">0:00</span>
+      <span id="listenerDuration">0:00</span>
+    </div>
+    <input type="range" id="listenerSeek" class="seek-slider" min="0" max="100" step="0.1" disabled>
+    <p id="listenerStatus" class="small-text" style="text-align:center;"></p>
+  </div>
+</div>
+
+<script>
+  (() => {
+    // ---------- DOM ----------
+    const $ = (id) => document.getElementById(id);
+    const home = $('homeScreen'), hostScreen = $('hostScreen'), listenerScreen = $('listenerScreen');
+    const globalStatus = $('globalStatus');
+    const createRoomBtn = $('createRoomBtn'), joinRoomBtn = $('joinRoomBtn'), joinRoomId = $('joinRoomId');
+    const hostIdDisplay = $('hostIdDisplay'), copyIdBtn = $('copyIdBtn');
+    const uploadBtn = $('uploadBtn'), fileInput = $('fileInput'), urlBtn = $('urlBtn');
+    const urlInput = $('urlInput'), loadUrlBtn = $('loadUrlBtn');
+    const hostStatus = $('hostStatus'), hostVideo = $('hostVideo');
+    const hostPlay = $('hostPlay'), hostPause = $('hostPause'), hostSeek = $('hostSeek');
+    const hostCurrent = $('hostCurrent'), hostDuration = $('hostDuration'), listenerCount = $('listenerCount');
+    const listenerNowPlaying = $('listenerNowPlaying'), listenerVideo = $('listenerVideo');
+    const listenerCurrent = $('listenerCurrent'), listenerDuration = $('listenerDuration'), listenerSeek = $('listenerSeek');
+    const listenerStatus = $('listenerStatus');
+    const hostBackBtn = $('hostBackBtn'), listenerBackBtn = $('listenerBackBtn');
+
+    // ---------- State ----------
+    let peer, connections = [], hostConn = null, isHost = false, myId;
+    let mediaType = null, mediaUrl = null;
+    let audioCtx, audioBuffer, sourceNode, startTime = 0, pauseOffset = 0, isPlaying = false, duration = 0, animFrame;
+    let pendingFileBuffer = null, pendingFileName = '', pendingFileType = '';
+
+    function switchTo(screen) {
+      [home, hostScreen, listenerScreen].forEach(s => s.classList.remove('active'));
+      screen.classList.add('active');
+    }
+
+    function formatTime(s) {
+      if (isNaN(s) || s < 0) return '0:00';
+      const m = Math.floor(s / 60), sec = Math.floor(s % 60).toString().padStart(2, '0');
+      return `${m}:${sec}`;
+    }
+
+    function stopAudio() {
+      if (sourceNode) {
+        try { sourceNode.stop(); } catch(e) {}
+        sourceNode.disconnect();
+        sourceNode = null;
+      }
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.suspend().catch(() => {});
+      }
+    }
+
+    function resetMedia() {
+      stopAudio();
+      cancelAnimationFrame(animFrame);
+      isPlaying = false;
+      pauseOffset = 0;
+      duration = 0;
+      audioBuffer = null;
+      mediaType = null;
+      mediaUrl = null;
+      pendingFileBuffer = null;
+      pendingFileName = '';
+      pendingFileType = '';
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+        audioCtx = null;
+      }
+      hostVideo.style.display = 'none';
+      listenerVideo.style.display = 'none';
+      hostVideo.src = '';
+      listenerVideo.src = '';
+    }
+
+    function broadcast(msg) {
+      connections.forEach(c => { if (c.open) c.send(msg); });
+    }
+
+    // Chunked file sending
+    function sendFileToPeer(conn, buffer, name, mime) {
+      const CHUNK_SIZE = 16 * 1024;
+      const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = buffer.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        conn.send({
+          type: 'file-chunk',
+          name, mime,
+          index: i,
+          total: totalChunks,
+          data: chunk
+        });
+      }
+    }
+
+    // Reassembly on listener
+    const incomingFiles = {};
+    function handleHostIncoming(data, conn) {
+      if (data.type === 'file-meta') {
+        incomingFiles[data.name] = { chunks: new Array(data.total), mime: data.mime, total: data.total, received: 0 };
+      } else if (data.type === 'file-chunk') {
+        const file = incomingFiles[data.name];
+        if (!file) return;
+        file.chunks[data.index] = new Uint8Array(data.data);
+        file.received++;
+        if (file.received === file.total) {
+          const blob = new Blob(file.chunks, { type: file.mime });
+          const url = URL.createObjectURL(blob);
+          delete incomingFiles[data.name];
+          loadMediaFromUrl(url, file.mime.startsWith('video/') ? 'video' : 'audio');
+        }
+      } else if (data.type === 'media-url') {
+        loadMediaFromUrl(data.url, data.mediaType);
+      } else if (data.type === 'play') {
+        handleRemotePlay(data);
+      } else if (data.type === 'pause') {
+        handleRemotePause(data);
+      } else if (data.type === 'seek') {
+        handleRemoteSeek(data);
+      }
+    }
+
+    function onHostMessage(data) { handleHostIncoming(data, hostConn); }
+
+    // ---------- PeerJS with STUN/TURN ----------
+    function initPeer(id) {
+      if (peer) {
+        peer.destroy();
+        peer = null;
+      }
+      return new Promise((resolve, reject) => {
+        // Use free STUN/TURN servers for better connectivity
+        const iceServers = [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
+        ];
+        peer = new Peer(id, {
+          debug: 1, // logs to console for debugging
+          config: { iceServers }
+        });
+        peer.on('open', (pid) => {
+          myId = pid;
+          console.log('Peer opened with ID:', pid);
+          resolve(pid);
+        });
+        peer.on('error', (err) => {
+          console.error('Peer error:', err);
+          globalStatus.textContent = '⚠️ Connection error: ' + err.type;
+          reject(err);
+        });
+        peer.on('disconnected', () => {
+          console.log('Peer disconnected');
+          // Attempt to reconnect
+          peer.reconnect();
+        });
+        peer.on('connection', (conn) => {
+          if (!isHost) return;
+          console.log('New connection from:', conn.peer);
+          connections.push(conn);
+          listenerCount.textContent = connections.length + ' listener' + (connections.length !== 1 ? 's' : '');
+          conn.on('data', (data) => handleHostIncoming(data, conn));
+          conn.on('close', () => {
+            connections = connections.filter(c => c !== conn);
+            listenerCount.textContent = connections.length + ' listener' + (connections.length !== 1 ? 's' : '');
+          });
+          // Send current state
+          if (pendingFileBuffer) {
+            conn.send({ type: 'file-meta', name: pendingFileName, mime: pendingFileType, size: pendingFileBuffer.byteLength });
+            sendFileToPeer(conn, pendingFileBuffer, pendingFileName, pendingFileType);
+          } else if (mediaUrl && mediaType) {
+            conn.send({ type: 'media-url', mediaType, url: mediaUrl });
+          }
+          if (isPlaying) {
+            const offset = (mediaType === 'video') ? hostVideo.currentTime : (audioCtx ? audioCtx.currentTime - startTime : 0);
+            conn.send({ type: 'play', startTime: offset, serverTime: Date.now() + 150 });
+          } else if (pauseOffset > 0) {
+            conn.send({ type: 'pause', pauseTime: pauseOffset });
+          }
+        });
+      });
+    }
+
+    // ---------- Media Loading ----------
+    async function loadMediaFromUrl(url, type) {
+      resetMedia();
+      mediaType = type;
+      mediaUrl = url;
+      if (type === 'video') {
+        hostVideo.src = url;
+        hostVideo.style.display = 'block';
+        listenerVideo.src = url;
+        listenerVideo.style.display = 'block';
+        hostVideo.load();
+        listenerVideo.load();
+        hostVideo.onloadedmetadata = () => {
+          duration = hostVideo.duration;
+          hostDuration.textContent = formatTime(duration);
+          hostSeek.max = duration;
+          hostPlay.disabled = false;
+          hostPause.disabled = false;
+          hostSeek.disabled = false;
+        };
+        listenerVideo.onloadedmetadata = () => {
+          listenerDuration.textContent = formatTime(listenerVideo.duration);
+          listenerSeek.max = listenerVideo.duration;
+        };
+      } else {
+        hostVideo.style.display = 'none';
+        listenerVideo.style.display = 'none';
+        if (audioCtx) await audioCtx.close();
+        audioCtx = new AudioContext();
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const buf = await resp.arrayBuffer();
+          audioBuffer = await audioCtx.decodeAudioData(buf);
+          duration = audioBuffer.duration;
+          hostDuration.textContent = formatTime(duration);
+          hostSeek.max = duration;
+          hostPlay.disabled = false;
+          hostPause.disabled = false;
+          hostSeek.disabled = false;
+        } catch (e) {
+          console.error(e);
+          hostStatus.textContent = '❌ Failed to load audio.';
+        }
+      }
+    }
+
+    // ---------- Host Playback ----------
+    async function hostPlayAction() {
+      if (!mediaType) return;
+      if (mediaType !== 'video' && audioCtx && audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      if (mediaType === 'video') {
+        hostVideo.currentTime = pauseOffset;
+        await hostVideo.play().catch(() => hostStatus.textContent = '⚠️ Playback blocked');
+        isPlaying = true;
+        broadcast({ type: 'play', startTime: pauseOffset, serverTime: Date.now() + 150 });
+        updateVideoTimeHost();
+      } else {
+        if (!audioBuffer || isPlaying) return;
+        isPlaying = true;
+        stopAudio();
+        sourceNode = audioCtx.createBufferSource();
+        sourceNode.buffer = audioBuffer;
+        sourceNode.connect(audioCtx.destination);
+        sourceNode.start(0, pauseOffset);
+        startTime = audioCtx.currentTime - pauseOffset;
+        updateAudioTime(hostCurrent, hostSeek, audioCtx, startTime);
+        broadcast({ type: 'play', startTime: pauseOffset, serverTime: Date.now() + 150 });
+      }
+    }
+
+    function hostPauseAction() {
+      if (!isPlaying) return;
+      if (mediaType === 'video') {
+        hostVideo.pause();
+        pauseOffset = hostVideo.currentTime;
+        isPlaying = false;
+        broadcast({ type: 'pause', pauseTime: pauseOffset });
+      } else {
+        stopAudio();
+        pauseOffset = audioCtx.currentTime - startTime;
+        isPlaying = false;
+        cancelAnimationFrame(animFrame);
+        broadcast({ type: 'pause', pauseTime: pauseOffset });
+      }
+    }
+
+    function hostSeekAction(val) {
+      pauseOffset = val;
+      if (mediaType === 'video') {
+        hostVideo.currentTime = val;
+        if (isPlaying) hostVideo.play().catch(() => {});
+      } else {
+        if (isPlaying) {
+          stopAudio();
+          sourceNode = audioCtx.createBufferSource();
+          sourceNode.buffer = audioBuffer;
+          sourceNode.connect(audioCtx.destination);
+          sourceNode.start(0, val);
+          startTime = audioCtx.currentTime - val;
+        }
+      }
+      broadcast({ type: 'seek', seekTime: val });
+    }
+
+    function updateAudioTime(currentEl, seekEl, ctx, start) {
+      if (!isPlaying) return;
+      const elapsed = ctx.currentTime - start;
+      seekEl.value = elapsed;
+      currentEl.textContent = formatTime(elapsed);
+      animFrame = requestAnimationFrame(() => updateAudioTime(currentEl, seekEl, ctx, start));
+    }
+
+    function updateVideoTimeHost() {
+      if (!isPlaying || mediaType !== 'video') return;
+      hostSeek.value = hostVideo.currentTime;
+      hostCurrent.textContent = formatTime(hostVideo.currentTime);
+      requestAnimationFrame(updateVideoTimeHost);
+    }
+
+    // ---------- Remote Control ----------
+    function handleRemotePlay(data) {
+      const { startTime: offset, serverTime } = data;
+      const delay = Math.max(0, serverTime - Date.now());
+      if (mediaType === 'video') {
+        setTimeout(() => {
+          if (listenerVideo.src) {
+            listenerVideo.currentTime = offset;
+            listenerVideo.play().catch(() => {});
+            isPlaying = true;
+            updateVideoTimeListener();
+          }
+        }, delay);
+      } else {
+        if (!audioBuffer) return;
+        stopAudio();
+        audioCtx.resume().then(() => {
+          const target = audioCtx.currentTime + delay / 1000;
+          sourceNode = audioCtx.createBufferSource();
+          sourceNode.buffer = audioBuffer;
+          sourceNode.connect(audioCtx.destination);
+          sourceNode.start(target, offset);
+          startTime = target - offset;
+          isPlaying = true;
+          updateAudioTime(listenerCurrent, listenerSeek, audioCtx, startTime);
+        });
+      }
+    }
+
+    function handleRemotePause(data) {
+      if (mediaType === 'video') {
+        listenerVideo.pause();
+        listenerVideo.currentTime = data.pauseTime;
+        isPlaying = false;
+      } else {
+        stopAudio();
+        pauseOffset = data.pauseTime;
+        isPlaying = false;
+        cancelAnimationFrame(animFrame);
+      }
+    }
+
+    function handleRemoteSeek(data) {
+      pauseOffset = data.seekTime;
+      if (mediaType === 'video') {
+        listenerVideo.currentTime = data.seekTime;
+        if (isPlaying) listenerVideo.play().catch(() => {});
+      } else {
+        if (isPlaying && audioBuffer) {
+          stopAudio();
+          sourceNode = audioCtx.createBufferSource();
+          sourceNode.buffer = audioBuffer;
+          sourceNode.connect(audioCtx.destination);
+          sourceNode.start(0, data.seekTime);
+          startTime = audioCtx.currentTime - data.seekTime;
+        }
+      }
+    }
+
+    function updateVideoTimeListener() {
+      if (!isPlaying || mediaType !== 'video') return;
+      listenerSeek.value = listenerVideo.currentTime;
+      listenerCurrent.textContent = formatTime(listenerVideo.currentTime);
+      requestAnimationFrame(updateVideoTimeListener);
+    }
+
+    // ---------- Leave Room ----------
+    function leaveRoom() {
+      resetMedia();
+      if (peer) {
+        peer.destroy();
+        peer = null;
+      }
+      connections = [];
+      hostConn = null;
+      isHost = false;
+      myId = null;
+      hostPlay.disabled = true;
+      hostPause.disabled = true;
+      hostSeek.disabled = true;
+      hostSeek.value = 0;
+      hostCurrent.textContent = '0:00';
+      hostDuration.textContent = '0:00';
+      hostStatus.textContent = '';
+      urlInput.style.display = 'none';
+      loadUrlBtn.style.display = 'none';
+      listenerNowPlaying.textContent = 'Waiting for host...';
+      listenerStatus.textContent = '';
+      switchTo(home);
+      globalStatus.textContent = '';
+    }
+
+    // ---------- Event Listeners ----------
+    createRoomBtn.onclick = async () => {
+      globalStatus.textContent = 'Starting host...';
+      try {
+        await initPeer();
+        isHost = true;
+        hostIdDisplay.value = myId;
+        switchTo(hostScreen);
+        globalStatus.textContent = '';
+      } catch {
+        globalStatus.innerHTML = '<span class="error-text">Failed to start host. Please try again.</span>';
+      }
+    };
+
+    joinRoomBtn.onclick = async () => {
+      const id = joinRoomId.value.trim();
+      if (!id) return;
+      globalStatus.textContent = 'Connecting...';
+      try {
+        await initPeer();
+        isHost = false;
+        const conn = peer.connect(id, { reliable: true });
+        hostConn = conn;
+        let connected = false;
+        conn.on('open', () => {
+          connected = true;
+          switchTo(listenerScreen);
+          listenerStatus.textContent = 'Connected ✅';
+          listenerStatus.className = 'small-text success-text';
+          globalStatus.textContent = '';
+          conn.on('data', onHostMessage);
+        });
+        conn.on('close', () => {
+          listenerStatus.textContent = 'Host disconnected.';
+          listenerStatus.className = 'small-text error-text';
+          setTimeout(leaveRoom, 2000);
+        });
+        conn.on('error', (err) => {
+          console.error('Connection error:', err);
+          listenerStatus.textContent = 'Connection error.';
+          listenerStatus.className = 'small-text error-text';
+        });
+        // Timeout after 10 seconds if not connected
+        setTimeout(() => {
+          if (!connected) {
+            globalStatus.innerHTML = '<span class="error-text">Connection timeout. Check Host ID and network.</span>';
+            if (hostConn) hostConn.close();
+            if (peer) peer.destroy();
+            peer = null;
+          }
+        }, 10000);
+      } catch {
+        globalStatus.innerHTML = '<span class="error-text">Connection failed. Check Host ID.</span>';
+      }
+    };
+
+    copyIdBtn.onclick = () => {
+      navigator.clipboard.writeText(hostIdDisplay.value).then(() => {
+        hostStatus.textContent = '📋 ID copied!';
+      });
+    };
+
+    // File Upload
+    uploadBtn.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      hostStatus.textContent = 'Processing file...';
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const fileBuffer = reader.result;
+        const fileName = file.name;
+        const fileType = file.type;
+        const blobUrl = URL.createObjectURL(file);
+        await loadMediaFromUrl(blobUrl, fileType.startsWith('video/') ? 'video' : 'audio');
+        pendingFileBuffer = fileBuffer;
+        pendingFileName = fileName;
+        pendingFileType = fileType;
+        connections.forEach(conn => {
+          conn.send({ type: 'file-meta', name: fileName, mime: fileType, size: fileBuffer.byteLength });
+          sendFileToPeer(conn, fileBuffer, fileName, fileType);
+        });
+        hostStatus.textContent = '✅ File shared!';
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    // URL Input
+    urlBtn.onclick = () => {
+      urlInput.style.display = 'block';
+      loadUrlBtn.style.display = 'block';
+    };
+    loadUrlBtn.onclick = async () => {
+      const url = urlInput.value.trim();
+      if (!url) return;
+      hostStatus.textContent = 'Loading URL...';
+      const type = (url.includes('video') || url.endsWith('.mp4') || url.endsWith('.webm')) ? 'video' : 'audio';
+      await loadMediaFromUrl(url, type);
+      mediaUrl = url;
+      mediaType = type;
+      broadcast({ type: 'media-url', mediaType: type, url: url });
+      hostStatus.textContent = '✅ URL shared!';
+    };
+
+    // Playback buttons
+    hostPlay.onclick = hostPlayAction;
+    hostPause.onclick = hostPauseAction;
+    hostSeek.oninput = () => hostSeekAction(parseFloat(hostSeek.value));
+
+    // Video time update
+    hostVideo.ontimeupdate = () => {
+      if (isPlaying && mediaType === 'video') {
+        hostSeek.value = hostVideo.currentTime;
+        hostCurrent.textContent = formatTime(hostVideo.currentTime);
+      }
+    };
+    listenerVideo.ontimeupdate = () => {
+      if (isPlaying && mediaType === 'video' && !isHost) {
+        listenerSeek.value = listenerVideo.currentTime;
+        listenerCurrent.textContent = formatTime(listenerVideo.currentTime);
+      }
+    };
+
+    // Back buttons
+    hostBackBtn.onclick = leaveRoom;
+    listenerBackBtn.onclick = leaveRoom;
+
+    // Cleanup
+    window.onbeforeunload = () => {
+      resetMedia();
+      if (peer) peer.destroy();
+    };
+  })();
+</script>
+</body>
+</html>
